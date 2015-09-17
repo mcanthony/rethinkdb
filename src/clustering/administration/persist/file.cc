@@ -22,7 +22,7 @@ struct metadata_disk_superblock_t {
 
 // Etymology: In version 1.13, the magic was 'RDmd', for "(R)ethink(D)B (m)eta(d)ata".
 // Every subsequent version, the last character has been incremented.
-static const block_magic_t metadata_sb_magic = { { 'R', 'D', 'm', 'i' } };
+static const block_magic_t metadata_sb_magic = { { 'R', 'D', 'm', 'j' } };
 
 void init_metadata_superblock(void *sb_void, size_t block_size) {
     memset(sb_void, 0, block_size);
@@ -51,12 +51,13 @@ superblock_version_t magic_to_version(block_magic_t magic) {
         case 'g': return superblock_version_t::from_1_16_to_2_0;
         case 'h': return superblock_version_t::from_1_16_to_2_0;
         case 'i': return superblock_version_t::post_2_1;
+        case 'j': return superblock_version_t::post_2_1;
         default: crash("You're trying to use an earlier version of RethinkDB to open a "
             "database created by a later version of RethinkDB.");
     }
     // This is here so you don't forget to add new versions above.
     // Please also update the value of metadata_sb_magic at the top of this file!
-    static_assert(cluster_version_t::v2_1_is_latest_disk == cluster_version_t::v2_1,
+    static_assert(cluster_version_t::v2_2_is_latest_disk == cluster_version_t::v2_2,
         "Please add new version to magic_to_version.");
 }
 

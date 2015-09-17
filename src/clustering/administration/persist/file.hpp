@@ -59,7 +59,7 @@ public:
                 key.key,
                 [&](read_stream_t *bin_value) {
                     archive_result_t res =
-                        deserialize<cluster_version_t::v2_1_is_latest>(
+                        deserialize<cluster_version_t::v2_2_is_latest>(
                             bin_value, value_out);
                     guarantee_deserialization(res, "metadata_file_t::read_txn_t::read");
                     found = true;
@@ -79,7 +79,7 @@ public:
                 [&](const std::string &key_suffix, read_stream_t *bin_value) {
                     T value;
                     archive_result_t res =
-                        deserialize<cluster_version_t::v2_1_is_latest>(
+                        deserialize<cluster_version_t::v2_2_is_latest>(
                             bin_value, &value);
                     guarantee_deserialization(res,
                         "metadata_file_t::read_txn_t::read_many");
