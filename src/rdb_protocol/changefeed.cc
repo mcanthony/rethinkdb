@@ -972,12 +972,12 @@ public:
             default: unreachable();
             }
         }
-        skey_version_t skey_version = skey_version_from_reql_version(
-            ref.sindex_info->mapping_version_info.latest_compatible_reql_version);
+        reql_version_t reql_version =
+            ref.sindex_info->mapping_version_info.latest_compatible_reql_version;
         rdb_rget_secondary_slice(
             ref.btree,
             srange,
-            region_t(srange.to_sindex_keyrange(skey_version)),
+            region_t(srange.to_sindex_keyrange(reql_version)),
             ref.superblock,
             env,
             batchspec_t::all(), // Terminal takes care of early termination
@@ -2482,7 +2482,11 @@ private:
         store_key_t key;
         if (val.index.has()) {
             key = store_key_t(
-                val.index.print_secondary(skey_version(), pkey, tag_num));
+                val.index.print_secondary(
+                    skey_version(),
+                    reql_version_t::v2_2_is_latest,
+                    pkey,
+                    tag_num));
         } else {
             key = pkey;
         }

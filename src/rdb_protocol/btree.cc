@@ -1186,6 +1186,7 @@ void compute_keys(const store_key_t &primary_key,
                             store_key_t(
                                 skey.print_secondary(
                                     ql::skey_version_from_reql_version(reql_version),
+                                    reql_version,
                                     primary_key,
                                     i)),
                             skey));
@@ -1213,6 +1214,7 @@ void compute_keys(const store_key_t &primary_key,
                     store_key_t(
                         index.print_secondary(
                             ql::skey_version_from_reql_version(reql_version),
+                            reql_version,
                             primary_key,
                             boost::none)),
                     index));

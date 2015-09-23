@@ -45,6 +45,10 @@ bool rget_response_reader_t::add_stamp(changefeed_stamp_t _stamp) {
 
 boost::optional<active_state_t> rget_response_reader_t::get_active_state() const {
     if (!stamp || !active_range || shard_stamps.size() == 0) return boost::none;
+    boost::optional<skey_version_t> skey_version;
+    if (reql_version) {
+        skey_version = ql::skey_version_from_reql_version(*reql_version);
+    }
     return active_state_t{
         key_range_t(key_range_t::closed, last_read_start,
                     key_range_t::open, active_range->left),
@@ -201,14 +205,14 @@ rget_reader_t::do_range_read(env_t *env, const read_t &read) {
 
     key_range_t rng;
     if (rr->sindex) {
-        if (skey_version) {
-            r_sanity_check(res.skey_version == *skey_version);
+        if (reql_version) {
+            r_sanity_check(res.reql_version == *reql_version);
         } else {
-            skey_version = res.skey_version;
+            reql_version = res.reql_version;
         }
         if (!active_range) {
             r_sanity_check(!rr->sindex->region);
-            active_range = rng = readgen->sindex_keyrange(res.skey_version);
+            active_range = rng = readgen->sindex_keyrange(res.reql_version);
         } else {
             r_sanity_check(rr->sindex->region);
             rng = (*rr->sindex->region).inner;
@@ -508,7 +512,7 @@ boost::optional<key_range_t> primary_readgen_t::original_keyrange() const {
     return original_datum_range.to_primary_keyrange();
 }
 
-key_range_t primary_readgen_t::sindex_keyrange(skey_version_t) const {
+key_range_t primary_readgen_t::sindex_keyrange(reql_version_t) const {
     crash("Cannot call `sindex_keyrange` on a primary readgen (internal server error).");
 }
 
@@ -671,8 +675,8 @@ boost::optional<key_range_t> sindex_readgen_t::original_keyrange() const {
     return boost::none;
 }
 
-key_range_t sindex_readgen_t::sindex_keyrange(skey_version_t skey_version) const {
-    return original_datum_range.to_sindex_keyrange(skey_version);
+key_range_t sindex_readgen_t::sindex_keyrange(reql_version_t reql_version) const {
+    return original_datum_range.to_sindex_keyrange(reql_version);
 }
 
 boost::optional<std::string> sindex_readgen_t::sindex_name() const {
@@ -774,14 +778,13 @@ boost::optional<key_range_t> intersecting_readgen_t::original_keyrange() const {
 
     // We can use whatever skey_version we want here because `universe`
     // becomes the same key range anyway.
-    return datum_range_t::universe().to_sindex_keyrange(skey_version_t::post_1_16);
+    return datum_range_t::universe().to_sindex_keyrange(reql_version_t::LATEST);
 }
 
-key_range_t intersecting_readgen_t::sindex_keyrange(
-    skey_version_t skey_version) const {
+key_range_t intersecting_readgen_t::sindex_keyrange(reql_version_t reql_version) const {
     // This is always universe for intersection reads.
     // The real query is in the query geometry.
-    return datum_range_t::universe().to_sindex_keyrange(skey_version);
+    return datum_range_t::universe().to_sindex_keyrange(reql_version);
 }
 
 boost::optional<std::string> intersecting_readgen_t::sindex_name() const {

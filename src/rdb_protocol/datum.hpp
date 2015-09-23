@@ -232,7 +232,8 @@ public:
         const std::string &tag);
     static std::string encode_tag_num(uint64_t tag_num);
     // tag_num is used for multi-indexes.
-    std::string print_secondary(skey_version_t reql_version,
+    std::string print_secondary(skey_version_t skey_version,
+                                reql_version_t reql_version,
                                 const store_key_t &primary_key,
                                 boost::optional<uint64_t> tag_num) const;
     /* An inverse to print_secondary. Returns the primary key. */
@@ -246,7 +247,7 @@ public:
     static boost::optional<uint64_t> extract_tag(const store_key_t &key);
     static components_t extract_all(const std::string &secondary_and_primary);
     store_key_t truncated_secondary(
-        skey_version_t skey_version,
+        reql_version_t reql_version,
         extrema_ok_t extrema_ok = extrema_ok_t::NOT_OK) const;
     void check_type(type_t desired, const char *msg = NULL) const;
     void type_error(const std::string &msg) const NORETURN;
@@ -365,9 +366,13 @@ private:
     friend void pseudo::time_to_str_key(const datum_t &d, std::string *str_out);
     void pt_to_str_key(std::string *str_out) const;
     void num_to_str_key(std::string *str_out) const;
-    void str_to_str_key(std::string *str_out) const;
+    void str_to_str_key(std::string *str_out,
+                        reql_version_t reql_version,
+                        bool is_primary) const;
     void bool_to_str_key(std::string *str_out) const;
-    void array_to_str_key(std::string *str_out) const;
+    void array_to_str_key(std::string *str_out,
+                          reql_version_t reql_version,
+                          bool is_primary) const;
     void binary_to_str_key(std::string *str_out) const;
     void extrema_to_str_key(std::string *str_out) const;
 
@@ -456,7 +461,7 @@ public:
     // Make sure you know what you're doing if you call these, and think about
     // truncated sindexes.
     key_range_t to_primary_keyrange() const;
-    key_range_t to_sindex_keyrange(skey_version_t skey_version) const;
+    key_range_t to_sindex_keyrange(reql_version_t reql_version) const;
 
     datum_range_t with_left_bound(datum_t d, key_range_t::bound_t type);
     datum_range_t with_right_bound(datum_t d, key_range_t::bound_t type);

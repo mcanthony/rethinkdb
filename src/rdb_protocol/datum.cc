@@ -690,7 +690,7 @@ void datum_t::binary_to_str_key(std::string *str_out) const {
     }
 }
 
-void datum_t::str_to_str_key(std::string *str_out) const {
+void datum_t::str_to_str_key(std::string *str_out, reql_version_t reql_version, bool is_primary) const {
     r_sanity_check(get_type() == R_STR);
     str_out->append("S");
     size_t to_append = std::min(MAX_KEY_SIZE - str_out->size(), as_str().size());
@@ -727,7 +727,9 @@ void datum_t::extrema_to_str_key(std::string *str_out) const {
 // The key for an array is stored as a string of all its elements, each separated by a
 //  null character, with another null character at the end to signify the end of the
 //  array (this is necessary to prevent ambiguity when nested arrays are involved).
-void datum_t::array_to_str_key(std::string *str_out) const {
+void datum_t::array_to_str_key(std::string *str_out,
+                               reql_version_t reql_version,
+                               bool is_primary) const {
     r_sanity_check(get_type() == R_ARRAY);
     str_out->append("A");
 
@@ -740,10 +742,10 @@ void datum_t::array_to_str_key(std::string *str_out) const {
         case MINVAL: // fallthru
         case MAXVAL: item.extrema_to_str_key(str_out); break;
         case R_NUM: item.num_to_str_key(str_out); break;
-        case R_STR: item.str_to_str_key(str_out); break;
+        case R_STR: item.str_to_str_key(str_out, reql_version, is_primary); break;
         case R_BINARY: item.binary_to_str_key(str_out); break;
         case R_BOOL: item.bool_to_str_key(str_out); break;
-        case R_ARRAY: item.array_to_str_key(str_out); break;
+        case R_ARRAY: item.array_to_str_key(str_out, reql_version, is_primary); break;
         case R_OBJECT:
             if (item.is_ptype()) {
                 item.pt_to_str_key(str_out);
@@ -967,10 +969,10 @@ std::string datum_t::print_primary_internal() const {
     case MINVAL: // fallthru
     case MAXVAL: extrema_to_str_key(&s); break;
     case R_NUM: num_to_str_key(&s); break;
-    case R_STR: str_to_str_key(&s); break;
+    case R_STR: str_to_str_key(&s, reql_version_t::v2_2_is_latest, true); break;
     case R_BINARY: binary_to_str_key(&s); break;
     case R_BOOL: bool_to_str_key(&s); break;
-    case R_ARRAY: array_to_str_key(&s); break;
+    case R_ARRAY: array_to_str_key(&s, reql_version_t::v2_2_is_latest, true); break;
     case R_OBJECT:
         if (is_ptype()) {
             pt_to_str_key(&s);
@@ -1070,6 +1072,7 @@ std::string datum_t::compose_secondary(
 }
 
 std::string datum_t::print_secondary(skey_version_t skey_version,
+                                     reql_version_t reql_version,
                                      const store_key_t &primary_key,
                                      boost::optional<uint64_t> tag_num) const {
     std::string secondary_key_string;
@@ -1080,13 +1083,13 @@ std::string datum_t::print_secondary(skey_version_t skey_version,
     if (get_type() == R_NUM) {
         num_to_str_key(&secondary_key_string);
     } else if (get_type() == R_STR) {
-        str_to_str_key(&secondary_key_string);
+        str_to_str_key(&secondary_key_string, reql_version, false);
     } else if (get_type() == R_BINARY) {
         binary_to_str_key(&secondary_key_string);
     } else if (get_type() == R_BOOL) {
         bool_to_str_key(&secondary_key_string);
     } else if (get_type() == R_ARRAY) {
-        array_to_str_key(&secondary_key_string);
+        array_to_str_key(&secondary_key_string, reql_version, false);
     } else if (get_type() == R_OBJECT && is_ptype()) {
         pt_to_str_key(&secondary_key_string);
     } else {
@@ -1200,18 +1203,19 @@ boost::optional<uint64_t> datum_t::extract_tag(const store_key_t &key) {
 // but the amount truncated depends on the length of the primary key.  Since we
 // do not know how much was truncated, we have to truncate the maximum amount,
 // then return all matches and filter them out later.
-store_key_t datum_t::truncated_secondary(skey_version_t skey_version, extrema_ok_t extrema_ok) const {
+store_key_t datum_t::truncated_secondary(reql_version_t reql_version,
+                                         extrema_ok_t extrema_ok) const {
     std::string s;
     if (get_type() == R_NUM) {
         num_to_str_key(&s);
     } else if (get_type() == R_STR) {
-        str_to_str_key(&s);
+        str_to_str_key(&s, reql_version, false);
     } else if (get_type() == R_BINARY) {
         binary_to_str_key(&s);
     } else if (get_type() == R_BOOL) {
         bool_to_str_key(&s);
     } else if (get_type() == R_ARRAY) {
-        array_to_str_key(&s);
+        array_to_str_key(&s, reql_version, false);
     } else if (get_type() == R_OBJECT && is_ptype()) {
         pt_to_str_key(&s);
     } else if (get_type() == MINVAL || get_type() == MAXVAL) {
@@ -1224,6 +1228,8 @@ store_key_t datum_t::truncated_secondary(skey_version_t skey_version, extrema_ok
             "or array (got %s of type %s).",
             print().c_str(), get_type_name().c_str()));
     }
+
+    skey_version_t skey_version = skey_version_from_reql_version(reql_version);
 
     // Truncate the key if necessary
     size_t mts = max_trunc_size(skey_version);
@@ -2213,12 +2219,12 @@ key_range_t datum_range_t::to_primary_keyrange() const {
                        right_bound_type, store_key_t(rb_str));
 }
 
-key_range_t datum_range_t::to_sindex_keyrange(skey_version_t skey_version) const {
+key_range_t datum_range_t::to_sindex_keyrange(reql_version_t reql_version) const {
     r_sanity_check(left_bound.has() && right_bound.has());
     object_buffer_t<store_key_t> lb, rb;
     return rdb_protocol::sindex_key_range(
-        store_key_t(left_bound.truncated_secondary(skey_version, extrema_ok_t::OK)),
-        store_key_t(right_bound.truncated_secondary(skey_version, extrema_ok_t::OK)));
+        store_key_t(left_bound.truncated_secondary(reql_version, extrema_ok_t::OK)),
+        store_key_t(right_bound.truncated_secondary(reql_version, extrema_ok_t::OK)));
 }
 
 datum_range_t datum_range_t::with_left_bound(datum_t d, key_range_t::bound_t type) {
