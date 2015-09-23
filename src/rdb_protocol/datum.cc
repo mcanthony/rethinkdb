@@ -511,16 +511,8 @@ datum_t to_datum(const rapidjson::Value &json, const configured_limits_t &limits
     }
 }
 
-
-void check_str_validity(const char *bytes, size_t count) {
-    const char *pos = static_cast<const char *>(memchr(bytes, 0, count));
-    rcheck_datum(
-        pos == NULL,
-        base_exc_t::LOGIC,
-        // We truncate because lots of other places can call `c_str` on the
-        // error message.
-        strprintf("String `%.20s` (truncated) contains NULL byte at offset %zu.",
-                  bytes, pos - bytes));
+void check_str_validity(const char *, size_t) {
+    // previous versions would throw on NULL bytes.
 }
 
 void datum_t::check_str_validity(const datum_string_t &str) {
@@ -693,8 +685,62 @@ void datum_t::binary_to_str_key(std::string *str_out) const {
 void datum_t::str_to_str_key(std::string *str_out, reql_version_t reql_version, bool is_primary) const {
     r_sanity_check(get_type() == R_STR);
     str_out->append("S");
-    size_t to_append = std::min(MAX_KEY_SIZE - str_out->size(), as_str().size());
-    str_out->append(as_str().data(), to_append);
+
+    bool enable_escapes;
+    switch (reql_version) {
+    case reql_version_t::v1_14:
+    case reql_version_t::v1_16:
+    case reql_version_t::v2_0:
+    case reql_version_t::v2_1:
+        enable_escapes = false;
+        break;
+    case reql_version_t::v2_2_is_latest:
+        enable_escapes = !is_primary;
+        break;
+    default: unreachable();
+    }
+
+    const datum_string_t &key = as_str();
+    const char *key_data = key.data();
+
+    if (enable_escapes) {
+        // Escape byte values of \x00 and \x01 using a leading \x01 byte to avoid
+        // ambiguity when strings are placed in an array (which uses \x00 bytes
+        // as separators)
+
+        size_t to_append = std::min(MAX_KEY_SIZE - str_out->size(), key.size());
+        for (size_t i = 0; i < to_append; ++i) {
+            switch (key_data[i]) {
+            case '\x00':
+                str_out->append("\x01\x01");
+                break;
+            case '\x01':
+                str_out->append("\x01\x02");
+                break;
+            default:
+                str_out->append(1, key_data[i]);
+            }
+        }
+    } else {
+        // No byte values are escaped, null bytes are invalid.
+
+        const char *pos = static_cast<const char *>(memchr(key_data, 0, key.size()));
+        if (pos != NULL) {
+            printf_buffer_t msg;
+            msg.appendf("String ");
+            debug_print_quoted_string(&msg,
+                                      reinterpret_cast<const uint8_t *>(key_data),
+                                      key.size() > 20 ? 20 : key.size());
+            msg.appendf(" (truncated) contains NULL byte at offset %zu in %s key.",
+                        pos - key_data,
+                        is_primary ? "primary" : "secondary");
+
+            rcheck(false, base_exc_t::LOGIC, std::string(msg.c_str()));
+        }
+
+        size_t to_append = std::min(MAX_KEY_SIZE - str_out->size(), as_str().size());
+        str_out->append(as_str().data(), to_append);
+    }
 }
 
 void datum_t::bool_to_str_key(std::string *str_out) const {
